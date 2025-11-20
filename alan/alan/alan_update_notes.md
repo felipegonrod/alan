@@ -1,7 +1,7 @@
 # ALAN Project Update
 
 ## Overview
-This update introduces a split-view interface designed for a simulation environment. The UI adopts a "Palantir-style" aesthetic: minimalist, brutalist, and metallic dark mode.
+This update evolves the original split-view UI into an RL playground for a jumping-agent environment. The upper code editor now ships with an MLX training script and the lower viewport visualizes up to 15 concurrent agents learning to avoid rectangular obstacles in real time. The visual language remains dark, metallic, and brutalist.
 
 ## Changes Implemented
 1.  **Split Layout**: The main view is divided into two vertical sections:
@@ -11,34 +11,64 @@ This update introduces a split-view interface designed for a simulation environm
     -   Implemented a dark, metallic theme (`Theme` struct).
     -   Custom colors for background, panels, borders, and accents.
     -   Monospaced fonts for code and technical headers.
-3.  **Code Editor**:
-    -   Added `CodeEditorView` with a `TextEditor`.
-    -   Pre-loaded with a default Python/MLX script "Hello World".
-    -   Styled with specific technical headers (e.g., "SCRIPT.PY").
-4.  **Simulation View**:
-    -   Added `SimulationView` using SwiftUI `Canvas`.
-    -   Renders a grid background, a ground line, and a red circle.
-    -   Includes shadow and stroke details for better visual separation.
-5.  **Modular Architecture**:
-    -   Extracted `Theme`, `SystemHeaderView`, `CodeEditorView`, and `SimulationView` into dedicated files.
-    -   Keeps `ContentView` focused on layout composition and future scaling.
+3.  **MLX RL Script**:
+    -   The editor now boots with `ScriptTemplates.jumpTrainer`, a multi-agent MLX policy-gradient loop for the jumping task.
+    -   The script exposes `train(num_agents=4)` so the same entity count selected in Swift can be mirrored in Python.
+4.  **Simulation View & Engine**:
+    -   Introduced `SimulationViewModel` that mimics basic RL behavior: each agent adapts its reaction threshold based on pass/fail events.
+    -   `SimulationView` renders multiple agents, their rewards, and moving obstacles via `Canvas`, updating at 60 FPS.
+5.  **Control Surface**:
+    -   Added `SimulationControlsView` with a Stepper (1–15 entities) and a Run/Stop toggle.
+    -   Header status LEDs change color according to the sim state (idle/running/complete).
+6.  **Modular Architecture**:
+    -   Maintained separate files for theme, views, models, and script templates.
+    -   `ContentView` now orchestrates bindings between editor text, controls, and the renderer.
+
+## MLX ↔ Swift Integration Plan (v0.1 Instructions)
+1.  **Python Runtime** (macOS):
+    1.  Install MLX in the project’s virtual environment.
+    2.  Use `PythonKit` (or a dedicated XPC helper) inside the macOS target to evaluate the code shown in the editor.
+    3.  When the user taps “Run Simulation,” persist the current script to a temp `.py` file and invoke it in a background task.
+2.  **Bridge Contract**:
+    -   The MLX script should emit lightweight telemetry per episode (e.g., JSON lines containing `agent_id`, `distance`, `jump_trigger`, `reward`).
+    -   Stream that telemetry back to Swift via `Pipe` / XPC / sockets and decode into `SimulationViewModel.Agent` updates.
+    -   Swift’s `SimulationViewModel` already expects:
+        -   `num_agents ≤ 15`
+        -   Per-agent reward deltas
+        -   Timely obstacle metadata (distance & height)
+    -   Once the real data arrives, replace the heuristic `updateAgents()` logic with the decoded telemetry.
+3.  **Synchronization**:
+    -   Keep the Swift `entityCount` Stepper in sync with the MLX script by string-searching for `train(num_agents=...)` and mutating before execution.
+    -   Use `DispatchSourceRead` or `async` `FileHandle` streams so the simulator updates in real time, not after the process exits.
+4.  **Testing**:
+    -   Start with deterministic seeds on both sides (Swift + Python) for reproducible visuals.
+    -   Add unit tests that assert the Python bridge produces ≤15 agents and that Swift gracefully handles missing frames.
+
+## How the Pieces Connect
+| Layer | Responsibility |
+| --- | --- |
+| `CodeEditorView` + `ScriptTemplates` | Authoring surface for MLX policy/control logic. |
+| `SimulationControlsView` | Parameter entry (entity count) + lifecycle commands (run/stop). |
+| `SimulationViewModel` | Real-time state machine; today it mocks RL updates, later it will ingest Python telemetry. |
+| `SimulationView` | Visual renderer; consumes view-model state to draw agents, obstacles, and rewards. |
+| MLX Script (`jumpTrainer`) | Defines the real training loop, network, optimizer, and environment dynamics. |
 
 ## Current Limitations
--   **No Execution**: The Python code in the editor is currently static text. It does not execute or interact with a Python interpreter.
--   **No Syntax Highlighting**: The editor is a standard plain text field; it lacks color coding for keywords or syntax analysis.
--   **Static Simulation**: The "simulation" is a drawing. The red circle does not move, respond to physics, or react to the code.
--   **Layout Fixed**: The split ratio is currently 50/50 (implied by `VStack` layout) and not resizable by the user.
+-   **Python still mocked**: Swift sim logic does not yet consume real MLX tensors; telemetry bridge is pending.
+-   **No syntax highlighting**: `TextEditor` remains plain text.
+-   **Single environment type**: Only the jump-over-rectangle scenario is visualized.
+-   **Fixed layout**: Split ratio and panel sizes are static.
 
 ## Next Possible Steps
-1.  **Python Integration**:
-    -   Embed a Python runtime (e.g., PythonKit or a lightweight WASM-based Python if targeting iOS/Web) to execute the script.
-    -   Map `mlx` commands to internal Swift functions.
-2.  **Syntax Highlighting**:
-    -   Replace `TextEditor` with a `UIViewRepresentable` wrapping `UITextView` (iOS) or `NSTextView` (macOS) to support attributed strings for syntax highlighting.
-3.  **Physics & Animation**:
-    -   Migrate the simulation view to **SpriteKit** or **SceneKit** for real physics and animation loops.
-    -   Allow the Python script to control entities in the scene (e.g., `circle.move(x=10)`).
-4.  **Resizable Layout**:
-    -   Implement a draggable divider between the code editor and the simulation view.
+1.  **Execute MLX inline**:
+    -   Add a `PythonBridge` service that runs the current script with `num_agents` injected at runtime.
+    -   Stream policies or logits into Swift so the visualization responds to actual network output.
+2.  **Inspector & Telemetry**:
+    -   Show per-agent policy thresholds, losses, and gradient norms.
+    -   Enable scrubbing through past episodes.
+3.  **UX Enhancements**:
+    -   Resizable splitter, syntax highlighting, linting, and template switching (e.g., other environments).
+4.  **Physics Upgrade**:
+    -   Port the renderer to SpriteKit/Metal for smoother animations and collision logic when scaling beyond 15 agents.
 
 

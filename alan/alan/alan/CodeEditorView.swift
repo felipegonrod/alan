@@ -8,22 +8,7 @@
 import SwiftUI
 
 struct CodeEditorView: View {
-    @State private var code: String = """
-import mlx.core as mx
-
-# ALAN Initialization
-def main():
-    print("Initializing system...")
-    
-    # Define tensor
-    x = mx.array([1.0, 2.0, 3.0])
-    
-    print("Hello World")
-    print(f"Tensor Status: {x}")
-
-if __name__ == "__main__":
-    main()
-"""
+    @Binding var code: String
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -60,5 +45,9 @@ private extension CodeEditorView {
             .background(Theme.codeBackground)
             .scrollContentBackground(.hidden)
     }
+}
+
+#Preview {
+    CodeEditorView(code: .constant(ScriptTemplates.jumpTrainer))
 }
 

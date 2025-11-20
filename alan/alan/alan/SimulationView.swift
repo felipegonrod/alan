@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct SimulationView: View {
+    @ObservedObject var viewModel: SimulationViewModel
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             simulationHeader
@@ -28,7 +30,7 @@ private extension SimulationView {
                 .foregroundColor(Theme.accent)
                 .tracking(1.0)
             Spacer()
-            Text("60 FPS")
+            Text("Episode \(viewModel.episode)")
                 .font(.caption2)
                 .foregroundColor(Theme.accent)
         }
@@ -44,10 +46,39 @@ private extension SimulationView {
             Canvas { context, size in
                 drawGrid(in: context, size: size)
                 drawGround(in: context, size: size)
-                drawUnit(in: context, size: size)
+                drawObstacles(in: context, size: size, obstacles: viewModel.obstacles)
+                drawAgents(in: context, size: size, agents: viewModel.agents)
             }
+            overlayStats
         }
         .clipped()
+    }
+    
+    var overlayStats: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(viewModel.infoMessage)
+                .font(.caption2)
+                .foregroundColor(.gray)
+            ForEach(viewModel.agents) { agent in
+                HStack {
+                    Circle()
+                        .fill(agent.color)
+                        .frame(width: 6, height: 6)
+                    Text(agent.name)
+                        .font(.caption2)
+                        .foregroundColor(Theme.text)
+                    Text(String(format: "r=%.1f", agent.reward))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundColor(.gray)
+                    Text(agent.displayText)
+                        .font(.caption2)
+                        .foregroundColor(agent.result == .success ? .green : (agent.result == .failure ? .red : .gray))
+                }
+            }
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     func drawGrid(in context: GraphicsContext, size: CGSize) {
@@ -62,7 +93,7 @@ private extension SimulationView {
                 path.addLine(to: CGPoint(x: size.width, y: y))
             }
         }
-        context.stroke(gridPath, with: .color(Color.white.opacity(0.05)), lineWidth: 0.5)
+        context.stroke(gridPath, with: .color(Color.white.opacity(0.04)), lineWidth: 0.5)
     }
     
     func drawGround(in context: GraphicsContext, size: CGSize) {
@@ -74,21 +105,37 @@ private extension SimulationView {
         context.stroke(groundPath, with: .color(Theme.text.opacity(0.8)), lineWidth: 2)
     }
     
-    func drawUnit(in context: GraphicsContext, size: CGSize) {
-        let circleSize: CGFloat = 50
+    func drawObstacles(in context: GraphicsContext, size: CGSize, obstacles: [SimulationViewModel.Obstacle]) {
         let groundY = size.height * 0.75
-        let circleOrigin = CGPoint(x: size.width / 2 - circleSize / 2,
-                                   y: groundY - circleSize)
-        let circleRect = CGRect(origin: circleOrigin,
-                                size: CGSize(width: circleSize, height: circleSize))
-        
-        let shadowRect = circleRect.offsetBy(dx: 4, dy: 4)
-        context.fill(Path(ellipseIn: shadowRect), with: .color(.black.opacity(0.5)))
-        context.fill(Path(ellipseIn: circleRect),
-                     with: .color(Color(red: 0.8, green: 0.2, blue: 0.2)))
-        context.stroke(Path(ellipseIn: circleRect),
-                       with: .color(.white.opacity(0.5)),
-                       lineWidth: 1)
+        for obstacle in obstacles {
+            let rect = CGRect(
+                x: obstacle.position * size.width,
+                y: groundY - obstacle.height * size.height,
+                width: obstacle.width * size.width,
+                height: obstacle.height * size.height
+            )
+            var path = Path(rect)
+            context.stroke(path, with: .color(.white.opacity(0.3)), lineWidth: 1)
+            context.fill(path, with: .color(Color(red: 0.5, green: 0.5, blue: 0.6).opacity(0.5)))
+        }
     }
+    
+    func drawAgents(in context: GraphicsContext, size: CGSize, agents: [SimulationViewModel.Agent]) {
+        let groundY = size.height * 0.75
+        let radius = size.height * 0.04
+        for agent in agents {
+            let x = agent.baseHorizontal * size.width
+            let y = groundY - agent.verticalOffset * size.height
+            let rect = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
+            let shadow = rect.offsetBy(dx: 4, dy: 4)
+            context.fill(Path(ellipseIn: shadow), with: .color(.black.opacity(0.4)))
+            context.fill(Path(ellipseIn: rect), with: .color(agent.color))
+            context.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.6)), lineWidth: 1)
+        }
+    }
+}
+
+#Preview {
+    SimulationView(viewModel: SimulationViewModel())
 }
 
